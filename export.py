@@ -527,6 +527,7 @@ def run(
         topk_all=100,  # TF.js NMS: topk for all classes to keep
         iou_thres=0.45,  # TF.js NMS: IoU threshold
         conf_thres=0.25,  # TF.js NMS: confidence threshold
+        trt_efficient_nms=False  # TensorRT: use efficient nms plugin
 ):
     t = time.time()
     include = [x.lower() for x in include]  # to lowercase
