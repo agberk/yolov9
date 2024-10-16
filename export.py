@@ -659,6 +659,7 @@ def parse_opt():
     parser.add_argument('--topk-all', type=int, default=100, help='ONNX END2END/TF.js NMS: topk for all classes to keep')
     parser.add_argument('--iou-thres', type=float, default=0.45, help='ONNX END2END/TF.js NMS: IoU threshold')
     parser.add_argument('--conf-thres', type=float, default=0.25, help='ONNX END2END/TF.js NMS: confidence threshold')
+    parser.add_argument('--trt-efficient-nms', action='store_true', help='TensorRT: use efficient nms plugin')
     parser.add_argument(
         '--include',
         nargs='+',
@@ -671,6 +672,14 @@ def parse_opt():
         opt.dynamic = True
         opt.inplace = True
         opt.half = False
+
+    if opt.trt_efficient_nms:
+        opt.simplify = True
+        opt.dynamic = True
+        opt.inplace = True
+        opt.half = False
+
+        opt.nms = True
 
     print_args(vars(opt))
     return opt
