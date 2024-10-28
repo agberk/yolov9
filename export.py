@@ -585,7 +585,7 @@ def run(
                 f[2], _ = export_onnx_end2end(model, im, file, simplify, topk_all, iou_thres, conf_thres, device, len(labels))
             else:
                 raise RuntimeError("The model is not a DetectionModel.")
-        f[1], _ = export_engine(model, im, file, half, dynamic, simplify, workspace, verbose, trt_efficient_nms)
+        f[1], _ = export_engine(model, im, file, half, dynamic, simplify, workspace, verbose, trt_efficient_nms=trt_efficient_nms)
     if onnx or xml:  # OpenVINO requires ONNX
         f[2], _ = export_onnx(model, im, file, opset, dynamic, simplify)
     if onnx_end2end:
