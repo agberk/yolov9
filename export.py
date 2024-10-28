@@ -266,7 +266,7 @@ def export_engine(model, im, file, half, dynamic, simplify, workspace=4, verbose
         import tensorrt as trt
 
     if trt_efficient_nms:
-        onnx = os.path.splitext(file)[0] + "-end2end.onnx"
+        onnx = Path(os.path.splitext(file)[0] + "-end2end.onnx")
     else:
         if trt.__version__[0] == '7':  # TensorRT 7 handling https://github.com/ultralytics/yolov5/issues/6012
             grid = model.model[-1].anchor_grid
