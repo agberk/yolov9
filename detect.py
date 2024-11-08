@@ -4,6 +4,7 @@ import platform
 import sys
 from pathlib import Path
 
+import tensorrt as trt
 import torch
 
 FILE = Path(__file__).resolve()
@@ -18,6 +19,9 @@ from utils.general import (LOGGER, Profile, check_file, check_img_size, check_im
                            increment_path, non_max_suppression, print_args, scale_boxes, strip_optimizer, xyxy2xywh)
 from utils.plots import Annotator, colors, save_one_box
 from utils.torch_utils import select_device, smart_inference_mode
+
+trt_logger = trt.Logger(trt.Logger.WARNING)
+trt.init_libnvinfer_plugins(trt_logger, namespace="")
 
 
 @smart_inference_mode()
