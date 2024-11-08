@@ -255,7 +255,7 @@ def export_coreml(model, im, file, int8, half, prefix=colorstr('CoreML:')):
 
 
 @try_export
-def export_engine(model, im, file, half, dynamic, simplify, workspace=4, verbose=False, prefix=colorstr('TensorRT:')):
+def export_engine(model, im, file, half, dynamic, simplify, workspace=4, verbose=False, prefix=colorstr('TensorRT:'), trt_efficient_nms=False):
     # YOLO TensorRT export https://developer.nvidia.com/tensorrt
     assert im.device.type != 'cpu', 'export running on CPU but must be on GPU, i.e. `python export.py --device 0`'
     try:
@@ -265,15 +265,18 @@ def export_engine(model, im, file, half, dynamic, simplify, workspace=4, verbose
             check_requirements('nvidia-tensorrt', cmds='-U --index-url https://pypi.ngc.nvidia.com')
         import tensorrt as trt
 
-    if trt.__version__[0] == '7':  # TensorRT 7 handling https://github.com/ultralytics/yolov5/issues/6012
-        grid = model.model[-1].anchor_grid
-        model.model[-1].anchor_grid = [a[..., :1, :1, :] for a in grid]
-        export_onnx(model, im, file, 12, dynamic, simplify)  # opset 12
-        model.model[-1].anchor_grid = grid
-    else:  # TensorRT >= 8
-        check_version(trt.__version__, '8.0.0', hard=True)  # require tensorrt>=8.0.0
-        export_onnx(model, im, file, 12, dynamic, simplify)  # opset 12
-    onnx = file.with_suffix('.onnx')
+    if trt_efficient_nms:
+        onnx = Path(os.path.splitext(file)[0] + "-end2end.onnx")
+    else:
+        if trt.__version__[0] == '7':  # TensorRT 7 handling https://github.com/ultralytics/yolov5/issues/6012
+            grid = model.model[-1].anchor_grid
+            model.model[-1].anchor_grid = [a[..., :1, :1, :] for a in grid]
+            export_onnx(model, im, file, 12, dynamic, simplify)  # opset 12
+            model.model[-1].anchor_grid = grid
+        else:  # TensorRT >= 8
+            check_version(trt.__version__, '8.0.0', hard=True)  # require tensorrt>=8.0.0
+            export_onnx(model, im, file, 12, dynamic, simplify)  # opset 12
+        onnx = file.with_suffix('.onnx')
 
     LOGGER.info(f'\n{prefix} starting export with TensorRT {trt.__version__}...')
     assert onnx.exists(), f'failed to export ONNX file: {onnx}'
@@ -527,6 +530,7 @@ def run(
         topk_all=100,  # TF.js NMS: topk for all classes to keep
         iou_thres=0.45,  # TF.js NMS: IoU threshold
         conf_thres=0.25,  # TF.js NMS: confidence threshold
+        trt_efficient_nms=False  # TensorRT: use efficient nms plugin
 ):
     t = time.time()
     include = [x.lower() for x in include]  # to lowercase
@@ -575,7 +579,13 @@ def run(
     if jit:  # TorchScript
         f[0], _ = export_torchscript(model, im, file, optimize)
     if engine:  # TensorRT required before ONNX
-        f[1], _ = export_engine(model, im, file, half, dynamic, simplify, workspace, verbose)
+        if trt_efficient_nms:
+            if isinstance(model, DetectionModel):
+                labels = model.names
+                f[2], _ = export_onnx_end2end(model, im, file, simplify, topk_all, iou_thres, conf_thres, device, len(labels))
+            else:
+                raise RuntimeError("The model is not a DetectionModel.")
+        f[1], _ = export_engine(model, im, file, half, dynamic, simplify, workspace, verbose, trt_efficient_nms=trt_efficient_nms)
     if onnx or xml:  # OpenVINO requires ONNX
         f[2], _ = export_onnx(model, im, file, opset, dynamic, simplify)
     if onnx_end2end:
@@ -659,6 +669,7 @@ def parse_opt():
     parser.add_argument('--topk-all', type=int, default=100, help='ONNX END2END/TF.js NMS: topk for all classes to keep')
     parser.add_argument('--iou-thres', type=float, default=0.45, help='ONNX END2END/TF.js NMS: IoU threshold')
     parser.add_argument('--conf-thres', type=float, default=0.25, help='ONNX END2END/TF.js NMS: confidence threshold')
+    parser.add_argument('--trt-efficient-nms', action='store_true', help='TensorRT: use efficient nms plugin')
     parser.add_argument(
         '--include',
         nargs='+',
@@ -671,6 +682,14 @@ def parse_opt():
         opt.dynamic = True
         opt.inplace = True
         opt.half = False
+
+    if opt.trt_efficient_nms:
+        opt.simplify = True
+        opt.dynamic = True
+        opt.inplace = True
+        opt.half = False
+
+        opt.nms = True
 
     print_args(vars(opt))
     return opt
