@@ -681,13 +681,11 @@ def parse_opt():
         opt.simplify = True
         opt.dynamic = True
         opt.inplace = True
-        opt.half = False
 
     if opt.trt_efficient_nms:
         opt.simplify = True
         opt.dynamic = True
         opt.inplace = True
-        opt.half = False
 
         opt.nms = True
 
