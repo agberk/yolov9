@@ -22,7 +22,7 @@ def main(args):
     #model = model.half()
     model = model.to(device)
     _ = model.eval()
-    ckpt = torch.load(args.weights, map_location='cpu')
+    ckpt = torch.load(args.weights, map_location='cpu', weights_only=False)
     model.names = ckpt['model'].names
     model.nc = ckpt['model'].nc
     idx = 0
