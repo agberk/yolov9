@@ -1,6 +1,19 @@
-import torch
-from models.yolo import Model
 import argparse
+import os
+import platform
+import sys
+from pathlib import Path
+
+import torch
+
+FILE = Path(__file__).resolve()
+ROOT = FILE.parents[1]  # YOLO root directory
+if str(ROOT) not in sys.path:
+    sys.path.append(str(ROOT))  # add ROOT to PATH
+if platform.system() != 'Windows':
+    ROOT = Path(os.path.relpath(ROOT, Path.cwd()))  # relative
+
+from models.yolo import Model
 
 
 def main(args):
@@ -100,4 +113,3 @@ if __name__ == "__main__":
     parser.add_argument('--save', default='./yolov9-c-converted.pt', type=str, help='save path')
     args = parser.parse_args()
     main(args)
-
