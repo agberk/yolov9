@@ -72,7 +72,7 @@ class ReportTool:
 def load_model(weights, device) -> Model:
     with torch_distributed_zero_first(LOCAL_RANK):
         attempt_download(weights)
-    model = torch.load(weights, map_location=device)["model"]
+    model = torch.load(weights, map_location=device, weights_only=False)["model"]
     for m in model.modules():
         if type(m) is nn.Upsample:
             m.recompute_scale_factor = None  # torch 1.11.0 compatibility
