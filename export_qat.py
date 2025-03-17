@@ -181,7 +181,7 @@ def export_onnx(model, im, file, opset, dynamic, simplify, prefix=colorstr('ONNX
 
 @try_export
 def export_onnx_end2end(model, im, file, class_agnostic, simplify, topk_all, iou_thres, conf_thres, device, labels, mask_resolution, pooler_scale, sampling_ratio, prefix=colorstr('ONNX END2END:')):
-    if not isinstance(model, DetectionModel) or not isinstance(model, SegmentationModel):
+    if not (isinstance(model, DetectionModel) or isinstance(model, SegmentationModel)):
         raise RuntimeError("Model not supported. Only Detection Models can be exported with End2End functionality.")
 
     is_det_model=True
