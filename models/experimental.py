@@ -97,6 +97,7 @@ class TRT_NMS(torch.autograd.Function):
         ctx,
         boxes,
         scores,
+        keypoints,
         background_class=-1,
         box_coding=1,
         iou_threshold=0.45,
@@ -105,13 +106,14 @@ class TRT_NMS(torch.autograd.Function):
         score_activation=0,
         score_threshold=0.25,
     ):
-
         batch_size, num_boxes, num_classes = scores.shape
         num_det = torch.randint(0, max_output_boxes, (batch_size, 1), dtype=torch.int32)
         det_boxes = torch.randn(batch_size, max_output_boxes, 4)
         det_scores = torch.randn(batch_size, max_output_boxes)
         det_classes = torch.randint(0, num_classes, (batch_size, max_output_boxes), dtype=torch.int32)
-        return num_det, det_boxes, det_scores, det_classes
+        det_keypoints = torch.randn(batch_size, max_output_boxes, keypoints.shape[-1])
+
+        return num_det, det_boxes, det_scores, det_classes, det_keypoints
 
     @staticmethod
     def symbolic(g,
