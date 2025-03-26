@@ -208,6 +208,12 @@ class ONNX_TRT(nn.Module):
         bboxes_h = x[..., 3:4]
         bboxes = torch.cat([bboxes_x, bboxes_y, bboxes_w, bboxes_h], dim = -1)
         bboxes = bboxes.unsqueeze(2) # [n_batch, n_bboxes, 4] -> [n_batch, n_bboxes, 1, 4]
+
+        xy = x[..., 0:2]  # shape [n_batch, n_bboxes, 2] — x and y
+        wh = x[..., 2:4]  # shape [n_batch, n_bboxes, 2] — w and h
+        keypoints = xy + wh / 2  # shape [n_batch, n_bboxes, 2] — (cx, cy)
+        keypoints = keypoints.unsqueeze(2)  # [n_batch, n_bboxes, 1, 2] to match shape like bboxes
+
         obj_conf = x[..., 4:]
         scores = obj_conf
         num_det, det_boxes, det_scores, det_classes = TRT_NMS.apply(bboxes, scores, self.background_class, self.box_coding,
