@@ -101,7 +101,7 @@ class TRT_NMS(torch.autograd.Function):
         box_coding=1,
         iou_threshold=0.45,
         max_output_boxes=100,
-        plugin_version="1",
+        plugin_version="kpt",
         score_activation=0,
         score_threshold=0.25,
     ):
@@ -121,7 +121,7 @@ class TRT_NMS(torch.autograd.Function):
                  box_coding=1,
                  iou_threshold=0.45,
                  max_output_boxes=100,
-                 plugin_version="1",
+                 plugin_version="kpt",
                  score_activation=0,
                  score_threshold=0.25):
         out = g.op("TRT::EfficientNMS_TRT",
@@ -191,7 +191,7 @@ class ONNX_TRT(nn.Module):
         self.box_coding = 1,
         self.iou_threshold = iou_thres
         self.max_obj = max_obj
-        self.plugin_version = '1'
+        self.plugin_version = 'kpt'
         self.score_activation = 0
         self.score_threshold = score_thres
         self.n_classes=n_classes
