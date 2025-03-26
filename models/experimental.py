@@ -216,11 +216,22 @@ class ONNX_TRT(nn.Module):
 
         obj_conf = x[..., 4:]
         scores = obj_conf
-        num_det, det_boxes, det_scores, det_classes = TRT_NMS.apply(bboxes, scores, self.background_class, self.box_coding,
-                                                                    self.iou_threshold, self.max_obj,
-                                                                    self.plugin_version, self.score_activation,
-                                                                    self.score_threshold)
-        return num_det, det_boxes, det_scores, det_classes
+
+        num_det, det_boxes, det_scores, det_classes, det_keypoints = TRT_NMS.apply(
+            bboxes,
+            scores,
+            keypoints,
+            self.background_class,
+            self.box_coding,
+            self.iou_threshold,
+            self.max_obj,
+            self.plugin_version,
+            self.score_activation,
+            self.score_threshold
+        )
+
+        return num_det, det_boxes, det_scores, det_classes, det_keypoints
+
 
 class End2End(nn.Module):
     '''export onnx or tensorrt model with NMS operation.'''
