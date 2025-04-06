@@ -156,15 +156,20 @@ def export_onnx_end2end(model, im, file, simplify, topk_all, iou_thres, conf_thr
                     'det_boxes': {0: 'batch'},
                     'det_scores': {0: 'batch'},
                     'det_classes': {0: 'batch'},
+                    'det_keypoints': {0: 'batch'}
                 }
     dynamic_axes.update(output_axes)
     model = End2End(model, topk_all, iou_thres, conf_thres, None ,device, labels)
 
-    output_names = ['num_dets', 'det_boxes', 'det_scores', 'det_classes']
-    shapes = [ batch_size, 1,  batch_size,  topk_all, 4,
-               batch_size,  topk_all,  batch_size,  topk_all]
-
-    torch.onnx.export(model, 
+    output_names = ['num_dets', 'det_boxes', 'det_scores', 'det_classes', 'det_keypoints']
+    shapes = [
+        batch_size, 1,               # num_dets
+        batch_size, topk_all, 4,     # det_boxes
+        batch_size, topk_all,        # det_scores
+        batch_size, topk_all,        # det_classes
+        batch_size, topk_all, 2      # det_keypoints
+    ]
+    torch.onnx.export(model,
                           im, 
                           f, 
                           verbose=False, 
