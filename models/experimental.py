@@ -111,7 +111,7 @@ class TRT_NMS(torch.autograd.Function):
         det_boxes = torch.randn(batch_size, max_output_boxes, 4)
         det_scores = torch.randn(batch_size, max_output_boxes)
         det_classes = torch.randint(0, num_classes, (batch_size, max_output_boxes), dtype=torch.int32)
-        det_keypoints = torch.randn(batch_size, max_output_boxes, keypoints.shape[-1])
+        det_keypoints = torch.randn(batch_size, max_output_boxes, keypoints.shape[-2], keypoints.shape[-1])
 
         return num_det, det_boxes, det_scores, det_classes, det_keypoints
 
@@ -221,7 +221,9 @@ class ONNX_TRT(nn.Module):
         xy = x[..., 0:2]  # shape [n_batch, n_bboxes, 2] — x and y
         wh = x[..., 2:4]  # shape [n_batch, n_bboxes, 2] — w and h
         keypoints = xy + wh / 2  # shape [n_batch, n_bboxes, 2] — (cx, cy)
-        keypoints = keypoints.unsqueeze(2)  # [n_batch, n_bboxes, 1, 2] to match shape like bboxes
+        visible_flags = torch.ones_like(keypoints[..., :1])  # [B, N, 1]
+        keypoints = torch.cat([keypoints, visible_flags], dim=-1)  # [B, N, 3]
+        keypoints = keypoints.unsqueeze(2)  # [B, N, 1, 3]
 
         obj_conf = x[..., 4:]
         scores = obj_conf
