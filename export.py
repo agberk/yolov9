@@ -167,7 +167,7 @@ def export_onnx_end2end(model, im, file, simplify, topk_all, iou_thres, conf_thr
         batch_size, topk_all, 4,     # det_boxes
         batch_size, topk_all,        # det_scores
         batch_size, topk_all,        # det_classes
-        batch_size, topk_all, 2      # det_keypoints
+        batch_size, topk_all, 3      # det_keypoints
     ]
     torch.onnx.export(model,
                           im, 
