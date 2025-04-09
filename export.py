@@ -156,7 +156,7 @@ def export_onnx_end2end(model, im, file, simplify, topk_all, iou_thres, conf_thr
                     'det_boxes': {0: 'batch'},
                     'det_scores': {0: 'batch'},
                     'det_classes': {0: 'batch'},
-                    'det_keypoints': {0: 'batch'}
+                    'det_keypoints': {0: 'batch', 1: 'num_boxes', 2: 'num_keypoints'}
                 }
     dynamic_axes.update(output_axes)
     model = End2End(model, topk_all, iou_thres, conf_thres, None ,device, labels)
@@ -167,7 +167,7 @@ def export_onnx_end2end(model, im, file, simplify, topk_all, iou_thres, conf_thr
         batch_size, topk_all, 4,     # det_boxes
         batch_size, topk_all,        # det_scores
         batch_size, topk_all,        # det_classes
-        batch_size, topk_all, 3      # det_keypoints
+        batch_size, topk_all, 'num_keypoints', 3    # det_keypoints
     ]
     torch.onnx.export(model,
                           im, 
@@ -684,12 +684,10 @@ def parse_opt():
 
     if 'onnx_end2end' in opt.include:  
         opt.simplify = True
-        opt.dynamic = True
         opt.inplace = True
 
     if opt.trt_efficient_nms:
         opt.simplify = True
-        opt.dynamic = True
         opt.inplace = True
 
         opt.nms = True
