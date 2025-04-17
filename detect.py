@@ -53,6 +53,7 @@ def run(
         half=False,  # use FP16 half-precision inference
         dnn=False,  # use OpenCV DNN for ONNX inference
         vid_stride=1,  # video frame-rate stride
+        use_trt_nms=False
 ):
     source = str(source)
     save_img = not nosave and not source.endswith('.txt')  # save inference images
@@ -99,11 +100,23 @@ def run(
         # Inference
         with dt[1]:
             visualize = increment_path(save_dir / Path(path).stem, mkdir=True) if visualize else False
-            pred = model(im, augment=augment, visualize=visualize)
-
+            outputs = model(im, augment=augment, visualize=visualize)
         # NMS
         with dt[2]:
-            pred = non_max_suppression(pred, conf_thres, iou_thres, classes, agnostic_nms, max_det=max_det)
+            if use_trt_nms:
+                num_dets, det_boxes, det_scores, det_classes, det_keypoints = outputs
+                bs = num_dets.shape[0]
+                pred = []
+                for b in range(bs):
+                    print(f"num_dets.shape: {num_dets.shape}, num_dets[{b}].shape: {num_dets[b].shape}")
+                    n = num_dets[b][0].item()
+                    boxes = det_boxes[b][:n]
+                    scores = det_scores[b][:n]
+                    classes = det_classes[b][:n].float().unsqueeze(1)  # match shape
+                    preds = torch.cat((boxes, scores.unsqueeze(1), classes), 1)
+                    pred.append(preds)
+            else:
+                pred = non_max_suppression(outputs, conf_thres, iou_thres, classes, agnostic_nms, max_det=max_det)
 
         # Second-stage classifier (optional)
         # pred = utils.general.apply_classifier(pred, classifier_model, im, im0s)
@@ -219,6 +232,7 @@ def parse_opt():
     parser.add_argument('--half', action='store_true', help='use FP16 half-precision inference')
     parser.add_argument('--dnn', action='store_true', help='use OpenCV DNN for ONNX inference')
     parser.add_argument('--vid-stride', type=int, default=1, help='video frame-rate stride')
+    parser.add_argument('--use-trt-nms', action='store_true', help='Use TensorRT EfficientNMS plugin output directly without running non_max_suppression()')
     opt = parser.parse_args()
     opt.imgsz *= 2 if len(opt.imgsz) == 1 else 1  # expand
     print_args(vars(opt))
