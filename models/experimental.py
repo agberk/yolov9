@@ -219,10 +219,8 @@ class ONNX_TRT(nn.Module):
         bboxes = bboxes.unsqueeze(2) # [n_batch, n_bboxes, 4] -> [n_batch, n_bboxes, 1, 4]
 
         xy = x[..., 0:2]  # shape [n_batch, n_bboxes, 2] — x and y
-        wh = x[..., 2:4]  # shape [n_batch, n_bboxes, 2] — w and h
-        keypoints = xy + wh / 2  # shape [n_batch, n_bboxes, 2] — (cx, cy)
-        visible_flags = torch.ones_like(keypoints[..., :1])  # [B, N, 1]
-        keypoints = torch.cat([keypoints, visible_flags], dim=-1)  # [B, N, 3]
+        visible_flags = torch.ones_like(xy[..., :1])  # [B, N, 1]
+        keypoints = torch.cat([xy, visible_flags], dim=-1)  # [B, N, 3]
         keypoints = keypoints.unsqueeze(2)  # [B, N, 1, 3]
 
         obj_conf = x[..., 4:]
