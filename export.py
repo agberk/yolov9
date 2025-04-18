@@ -146,6 +146,7 @@ def export_onnx_end2end(
         im,
         file,
         simplify,
+        dynamic: bool,
         topk_all,
         iou_thres,
         conf_thres,
@@ -173,14 +174,17 @@ def export_onnx_end2end(
         }
     }
 
-    dynamic_axes = {
-        'images': {
-            0 : 'batch',
-            2: 'height',
-            3:'width'
+    if dynamic:
+        dynamic_axes = {
+            'images': {
+                0 : 'batch',
+                2: 'height',
+                3: 'width'
+            }
         }
-    }
-    dynamic_axes.update(output_axes)
+        dynamic_axes.update(output_axes)
+    else:
+        dynamic_axes = {}
 
     model = End2End(model, topk_all, iou_thres, conf_thres, None ,device, labels)
 
@@ -614,7 +618,7 @@ def run(
         if trt_efficient_nms:
             if isinstance(model, DetectionModel):
                 labels = model.names
-                f[2], _ = export_onnx_end2end(model, im, file, simplify, topk_all, iou_thres, conf_thres, device, len(labels))
+                f[2], _ = export_onnx_end2end(model, im, file, simplify, dynamic, topk_all, iou_thres, conf_thres, device, len(labels))
             else:
                 raise RuntimeError("The model is not a DetectionModel.")
         f[1], _ = export_engine(model, im, file, half, dynamic, simplify, workspace, verbose, trt_efficient_nms=trt_efficient_nms)
@@ -623,7 +627,7 @@ def run(
     if onnx_end2end:
         if isinstance(model, DetectionModel):
             labels = model.names
-            f[2], _ = export_onnx_end2end(model, im, file, simplify, topk_all, iou_thres, conf_thres, device, len(labels))
+            f[2], _ = export_onnx_end2end(model, im, file, simplify, dynamic, topk_all, iou_thres, conf_thres, device, len(labels))
         else:
             raise RuntimeError("The model is not a DetectionModel.")
     if xml:  # OpenVINO
