@@ -106,15 +106,19 @@ def run(
             if use_trt_nms:
                 num_dets, det_boxes, det_scores, det_classes, det_keypoints = outputs
                 bs = num_dets.shape[0]
+
                 pred = []
+                keypoints = []
                 for b in range(bs):
-                    print(f"num_dets.shape: {num_dets.shape}, num_dets[{b}].shape: {num_dets[b].shape}")
                     n = num_dets[b][0].item()
                     boxes = det_boxes[b][:n]
                     scores = det_scores[b][:n]
                     classes = det_classes[b][:n].float().unsqueeze(1)  # match shape
+                    kpts = det_keypoints[b][:n]
                     preds = torch.cat((boxes, scores.unsqueeze(1), classes), 1)
+
                     pred.append(preds)
+                    keypoints.append(kpts)
             else:
                 pred = non_max_suppression(outputs, conf_thres, iou_thres, classes, agnostic_nms, max_det=max_det)
 
@@ -160,7 +164,14 @@ def run(
                         annotator.box_label(xyxy, label, color=colors(c, True))
                     if save_crop:
                         save_one_box(xyxy, imc, file=save_dir / 'crops' / names[c] / f'{p.stem}.jpg', BGR=True)
-
+            if use_trt_nms and len(det):
+                kpts = keypoints[i]  # shape: [n, K, 3]
+                kpts[..., 0] *= im0.shape[1] / im.shape[3]  # x-scale
+                kpts[..., 1] *= im0.shape[0] / im.shape[2]  # y-scale
+                for kpt_set in kpts:
+                    for x, y, v in kpt_set:
+                        if v > 0:  # visibility check
+                            cv2.circle(im0, (int(x), int(y)), 2, (0, 255, 255), -1)
             # Stream results
             im0 = annotator.result()
             if view_img:
