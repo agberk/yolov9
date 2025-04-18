@@ -141,24 +141,47 @@ def export_onnx(model, im, file, opset, dynamic, simplify, prefix=colorstr('ONNX
     
 
 @try_export
-def export_onnx_end2end(model, im, file, simplify, topk_all, iou_thres, conf_thres, device, labels, prefix=colorstr('ONNX END2END:')):
-    # YOLO ONNX export
+def export_onnx_end2end(
+        model,
+        im,
+        file,
+        simplify,
+        topk_all,
+        iou_thres,
+        conf_thres,
+        device,
+        labels,
+        prefix=colorstr('ONNX END2END:')
+):
+    # YOLO ONNX export.
     check_requirements('onnx')
     import onnx
     LOGGER.info(f'\n{prefix} starting export with onnx {onnx.__version__}...')
+
     f = os.path.splitext(file)[0] + "-end2end.onnx"
     batch_size = 'batch'
 
-    dynamic_axes = {'images': {0 : 'batch', 2: 'height', 3:'width'}, } # variable length axes
-
     output_axes = {
-                    'num_dets': {0: 'batch'},
-                    'det_boxes': {0: 'batch'},
-                    'det_scores': {0: 'batch'},
-                    'det_classes': {0: 'batch'},
-                    'det_keypoints': {0: 'batch', 1: 'num_boxes', 2: 'num_keypoints'}
-                }
+        'num_dets': {0: 'batch'},
+        'det_boxes': {0: 'batch'},
+        'det_scores': {0: 'batch'},
+        'det_classes': {0: 'batch'},
+        'det_keypoints': {
+            0: 'batch',
+            1: 'num_boxes',
+            2: 'num_keypoints'
+        }
+    }
+
+    dynamic_axes = {
+        'images': {
+            0 : 'batch',
+            2: 'height',
+            3:'width'
+        }
+    }
     dynamic_axes.update(output_axes)
+
     model = End2End(model, topk_all, iou_thres, conf_thres, None ,device, labels)
 
     output_names = ['num_dets', 'det_boxes', 'det_scores', 'det_classes', 'det_keypoints']
@@ -169,20 +192,23 @@ def export_onnx_end2end(model, im, file, simplify, topk_all, iou_thres, conf_thr
         batch_size, topk_all,        # det_classes
         batch_size, topk_all, 'num_keypoints', 3    # det_keypoints
     ]
-    torch.onnx.export(model,
-                          im, 
-                          f, 
-                          verbose=False, 
-                          export_params=True,       # store the trained parameter weights inside the model file
-                          opset_version=12, 
-                          do_constant_folding=True, # whether to execute constant folding for optimization
-                          input_names=['images'],
-                          output_names=output_names,
-                          dynamic_axes=dynamic_axes)
 
-    # Checks
-    model_onnx = onnx.load(f)  # load onnx model
-    onnx.checker.check_model(model_onnx)  # check onnx model
+    torch.onnx.export(
+        model,
+        im,
+        f,
+        verbose=False,
+        export_params=True,  # Store the trained parameter weights inside the model file.
+        opset_version=12,
+        do_constant_folding=True, # Whether to execute constant folding for optimization.
+        input_names=['images'],
+        output_names=output_names,
+        dynamic_axes=dynamic_axes
+    )
+
+    # Checks.
+    model_onnx = onnx.load(f)
+    onnx.checker.check_model(model_onnx)
     for i in model_onnx.graph.output:
         for j in i.type.tensor_type.shape.dim:
             j.dim_param = str(shapes.pop(0))
@@ -197,9 +223,10 @@ def export_onnx_end2end(model, im, file, simplify, topk_all, iou_thres, conf_thr
         except Exception as e:
             print(f'Simplifier failure: {e}')
 
-        # print(onnx.helper.printable_graph(onnx_model.graph))  # print a human readable model
+        # print(onnx.helper.printable_graph(onnx_model.graph))  # Print a human readable model.
         onnx.save(model_onnx,f)
         print('ONNX export success, saved as %s' % f)
+
     return f, model_onnx
 
 
