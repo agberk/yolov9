@@ -53,7 +53,8 @@ def run(
         half=False,  # use FP16 half-precision inference
         dnn=False,  # use OpenCV DNN for ONNX inference
         vid_stride=1,  # video frame-rate stride
-        use_trt_nms=False
+        use_trt_nms=False,
+        use_keypoints=False
 ):
     source = str(source)
     save_img = not nosave and not source.endswith('.txt')  # save inference images
@@ -104,21 +105,27 @@ def run(
         # NMS
         with dt[2]:
             if use_trt_nms:
-                num_dets, det_boxes, det_scores, det_classes, det_keypoints = outputs
+                if use_keypoints:
+                    num_dets, det_boxes, det_scores, det_classes, det_keypoints = outputs
+                    keypoints = []
+                else:
+                    num_dets, det_boxes, det_scores, det_classes = outputs
+
                 bs = num_dets.shape[0]
 
                 pred = []
-                keypoints = []
                 for b in range(bs):
                     n = num_dets[b][0].item()
                     boxes = det_boxes[b][:n]
                     scores = det_scores[b][:n]
                     classes = det_classes[b][:n].float().unsqueeze(1)  # match shape
-                    kpts = det_keypoints[b][:n]
                     preds = torch.cat((boxes, scores.unsqueeze(1), classes), 1)
 
                     pred.append(preds)
-                    keypoints.append(kpts)
+
+                    if use_keypoints:
+                        kpts = det_keypoints[b][:n]
+                        keypoints.append(kpts)
             else:
                 pred = non_max_suppression(outputs, conf_thres, iou_thres, classes, agnostic_nms, max_det=max_det)
 
@@ -164,7 +171,11 @@ def run(
                         annotator.box_label(xyxy, label, color=colors(c, True))
                     if save_crop:
                         save_one_box(xyxy, imc, file=save_dir / 'crops' / names[c] / f'{p.stem}.jpg', BGR=True)
-            if use_trt_nms and len(det):
+            if (
+                use_trt_nms and
+                use_keypoints and
+                len(det)
+            ):
                 kpts = keypoints[i]  # shape: [n, K, 3]
                 kpts[..., 0] *= im0.shape[1] / im.shape[3]  # x-scale
                 kpts[..., 1] *= im0.shape[0] / im.shape[2]  # y-scale
@@ -244,6 +255,7 @@ def parse_opt():
     parser.add_argument('--dnn', action='store_true', help='use OpenCV DNN for ONNX inference')
     parser.add_argument('--vid-stride', type=int, default=1, help='video frame-rate stride')
     parser.add_argument('--use-trt-nms', action='store_true', help='Use TensorRT EfficientNMS plugin output directly without running non_max_suppression()')
+    parser.add_argument('--use-keypoints', action='store_true', help='TensorRT: use keypoints in efficient nms plugin')
     opt = parser.parse_args()
     opt.imgsz *= 2 if len(opt.imgsz) == 1 else 1  # expand
     print_args(vars(opt))
