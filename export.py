@@ -141,43 +141,82 @@ def export_onnx(model, im, file, opset, dynamic, simplify, prefix=colorstr('ONNX
     
 
 @try_export
-def export_onnx_end2end(model, im, file, simplify, topk_all, iou_thres, conf_thres, device, labels, prefix=colorstr('ONNX END2END:')):
-    # YOLO ONNX export
+def export_onnx_end2end(
+        model,
+        im,
+        file,
+        simplify,
+        dynamic: bool,
+        topk_all,
+        iou_thres,
+        conf_thres,
+        device,
+        labels,
+        plugin_version: str = '1',
+        prefix=colorstr('ONNX END2END:')
+):
+    # YOLO ONNX export.
     check_requirements('onnx')
     import onnx
     LOGGER.info(f'\n{prefix} starting export with onnx {onnx.__version__}...')
+
     f = os.path.splitext(file)[0] + "-end2end.onnx"
     batch_size = 'batch'
 
-    dynamic_axes = {'images': {0 : 'batch', 2: 'height', 3:'width'}, } # variable length axes
-
     output_axes = {
-                    'num_dets': {0: 'batch'},
-                    'det_boxes': {0: 'batch'},
-                    'det_scores': {0: 'batch'},
-                    'det_classes': {0: 'batch'},
-                }
-    dynamic_axes.update(output_axes)
-    model = End2End(model, topk_all, iou_thres, conf_thres, None ,device, labels)
+        'num_dets': {0: 'batch'},
+        'det_boxes': {0: 'batch'},
+        'det_scores': {0: 'batch'},
+        'det_classes': {0: 'batch'},
+    }
+
+    if dynamic:
+        dynamic_axes = {
+            'images': {
+                0 : 'batch',
+                2: 'height',
+                3: 'width'
+            }
+        }
+        dynamic_axes.update(output_axes)
+    else:
+        dynamic_axes = {}
+
+    model = End2End(model, topk_all, iou_thres, conf_thres, None, device, labels, plugin_version)
 
     output_names = ['num_dets', 'det_boxes', 'det_scores', 'det_classes']
-    shapes = [ batch_size, 1,  batch_size,  topk_all, 4,
-               batch_size,  topk_all,  batch_size,  topk_all]
+    shapes = [
+        batch_size, 1,               # num_dets
+        batch_size, topk_all, 4,     # det_boxes
+        batch_size, topk_all,        # det_scores
+        batch_size, topk_all,        # det_classes
+    ]
 
-    torch.onnx.export(model, 
-                          im, 
-                          f, 
-                          verbose=False, 
-                          export_params=True,       # store the trained parameter weights inside the model file
-                          opset_version=12, 
-                          do_constant_folding=True, # whether to execute constant folding for optimization
-                          input_names=['images'],
-                          output_names=output_names,
-                          dynamic_axes=dynamic_axes)
+    if plugin_version == 'kpt':
+        output_names.append('det_keypoints')
+        shapes += [batch_size, topk_all, 'num_keypoints', 3]
+        output_axes['det_keypoints'] = {
+            0: 'batch',
+            1: 'num_boxes',
+            2: 'num_keypoints'
+        }
 
-    # Checks
-    model_onnx = onnx.load(f)  # load onnx model
-    onnx.checker.check_model(model_onnx)  # check onnx model
+    torch.onnx.export(
+        model,
+        im,
+        f,
+        verbose=False,
+        export_params=True,  # Store the trained parameter weights inside the model file.
+        opset_version=12,
+        do_constant_folding=True, # Whether to execute constant folding for optimization.
+        input_names=['images'],
+        output_names=output_names,
+        dynamic_axes=dynamic_axes
+    )
+
+    # Checks.
+    model_onnx = onnx.load(f)
+    onnx.checker.check_model(model_onnx)
     for i in model_onnx.graph.output:
         for j in i.type.tensor_type.shape.dim:
             j.dim_param = str(shapes.pop(0))
@@ -192,9 +231,10 @@ def export_onnx_end2end(model, im, file, simplify, topk_all, iou_thres, conf_thr
         except Exception as e:
             print(f'Simplifier failure: {e}')
 
-        # print(onnx.helper.printable_graph(onnx_model.graph))  # print a human readable model
+        # print(onnx.helper.printable_graph(onnx_model.graph))  # Print a human readable model.
         onnx.save(model_onnx,f)
         print('ONNX export success, saved as %s' % f)
+
     return f, model_onnx
 
 
@@ -530,7 +570,8 @@ def run(
         topk_all=100,  # TF.js NMS: topk for all classes to keep
         iou_thres=0.45,  # TF.js NMS: IoU threshold
         conf_thres=0.25,  # TF.js NMS: confidence threshold
-        trt_efficient_nms=False  # TensorRT: use efficient nms plugin
+        trt_efficient_nms=False,  # TensorRT: use efficient nms plugin.
+        use_keypoints=False  # TensorRT: use keypoints in efficient nms plugin.
 ):
     t = time.time()
     include = [x.lower() for x in include]  # to lowercase
@@ -582,7 +623,8 @@ def run(
         if trt_efficient_nms:
             if isinstance(model, DetectionModel):
                 labels = model.names
-                f[2], _ = export_onnx_end2end(model, im, file, simplify, topk_all, iou_thres, conf_thres, device, len(labels))
+                plugin_version = 'kpt' if use_keypoints  else '1'
+                f[2], _ = export_onnx_end2end(model, im, file, simplify, dynamic, topk_all, iou_thres, conf_thres, device, len(labels), plugin_version)
             else:
                 raise RuntimeError("The model is not a DetectionModel.")
         f[1], _ = export_engine(model, im, file, half, dynamic, simplify, workspace, verbose, trt_efficient_nms=trt_efficient_nms)
@@ -591,7 +633,8 @@ def run(
     if onnx_end2end:
         if isinstance(model, DetectionModel):
             labels = model.names
-            f[2], _ = export_onnx_end2end(model, im, file, simplify, topk_all, iou_thres, conf_thres, device, len(labels))
+            plugin_version = 'kpt' if use_keypoints  else '1'
+            f[2], _ = export_onnx_end2end(model, im, file, simplify, dynamic, topk_all, iou_thres, conf_thres, device, len(labels), plugin_version)
         else:
             raise RuntimeError("The model is not a DetectionModel.")
     if xml:  # OpenVINO
@@ -670,6 +713,7 @@ def parse_opt():
     parser.add_argument('--iou-thres', type=float, default=0.45, help='ONNX END2END/TF.js NMS: IoU threshold')
     parser.add_argument('--conf-thres', type=float, default=0.25, help='ONNX END2END/TF.js NMS: confidence threshold')
     parser.add_argument('--trt-efficient-nms', action='store_true', help='TensorRT: use efficient nms plugin')
+    parser.add_argument('--use-keypoints', action='store_true', help='TensorRT: use keypoints in efficient nms plugin')
     parser.add_argument(
         '--include',
         nargs='+',
@@ -677,16 +721,7 @@ def parse_opt():
         help='torchscript, onnx, onnx_end2end, openvino, engine, coreml, saved_model, pb, tflite, edgetpu, tfjs, paddle')
     opt = parser.parse_args()
 
-    if 'onnx_end2end' in opt.include:  
-        opt.simplify = True
-        opt.dynamic = True
-        opt.inplace = True
-
     if opt.trt_efficient_nms:
-        opt.simplify = True
-        opt.dynamic = True
-        opt.inplace = True
-
         opt.nms = True
 
     print_args(vars(opt))

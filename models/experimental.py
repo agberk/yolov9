@@ -90,20 +90,78 @@ class ORT_NMS(torch.autograd.Function):
         return g.op("NonMaxSuppression", boxes, scores, max_output_boxes_per_class, iou_threshold, score_threshold)
 
 
-class TRT_NMS(torch.autograd.Function):
+class TRT_NMS_KPT(torch.autograd.Function):
     '''TensorRT NMS operation'''
     @staticmethod
     def forward(
         ctx,
         boxes,
         scores,
+        keypoints,
         background_class=-1,
         box_coding=1,
         iou_threshold=0.45,
         max_output_boxes=100,
-        plugin_version="1",
+        plugin_version="kpt",
         score_activation=0,
         score_threshold=0.25,
+    ):
+        batch_size, num_boxes, num_classes = scores.shape
+        num_det = torch.randint(0, max_output_boxes, (batch_size, 1), dtype=torch.int32)
+        det_boxes = torch.randn(batch_size, max_output_boxes, 4)
+        det_scores = torch.randn(batch_size, max_output_boxes)
+        det_classes = torch.randint(0, num_classes, (batch_size, max_output_boxes), dtype=torch.int32)
+        det_keypoints = torch.randn(batch_size, max_output_boxes, keypoints.shape[-2], keypoints.shape[-1])
+
+        return num_det, det_boxes, det_scores, det_classes, det_keypoints
+
+    @staticmethod
+    def symbolic(
+            g,
+            boxes,
+            scores,
+            keypoints,
+            background_class=-1,
+            box_coding=1,
+            iou_threshold=0.45,
+            max_output_boxes=100,
+            plugin_version="kpt",
+            score_activation=0,
+            score_threshold=0.25
+    ):
+        out = g.op(
+            "TRT::EfficientNMS_TRT",
+            boxes,
+            scores,
+            keypoints,
+            background_class_i=background_class,
+            box_coding_i=box_coding,
+            iou_threshold_f=iou_threshold,
+            max_output_boxes_i=max_output_boxes,
+            plugin_version_s=plugin_version,
+            score_activation_i=score_activation,
+            score_threshold_f=score_threshold,
+            outputs=5
+        )
+        nums, boxes, scores, classes, keypoints = out
+
+        return nums, boxes, scores, classes, keypoints
+
+
+class TRT_NMS(torch.autograd.Function):
+    '''TensorRT NMS operation'''
+    @staticmethod
+    def forward(
+            ctx,
+            boxes,
+            scores,
+            background_class=-1,
+            box_coding=1,
+            iou_threshold=0.45,
+            max_output_boxes=100,
+            plugin_version="1",
+            score_activation=0,
+            score_threshold=0.25,
     ):
 
         batch_size, num_boxes, num_classes = scores.shape
@@ -183,7 +241,16 @@ class ONNX_ORT(nn.Module):
 
 class ONNX_TRT(nn.Module):
     '''onnx module with TensorRT NMS operation.'''
-    def __init__(self, max_obj=100, iou_thres=0.45, score_thres=0.25, max_wh=None ,device=None, n_classes=80):
+    def __init__(
+            self,
+            max_obj=100,
+            iou_thres=0.45,
+            score_thres=0.25,
+            max_wh=None,
+            device=None,
+            n_classes=80,
+            plugin_version: str='1'
+    ):
         super().__init__()
         assert max_wh is None
         self.device = device if device else torch.device('cpu')
@@ -191,7 +258,7 @@ class ONNX_TRT(nn.Module):
         self.box_coding = 1,
         self.iou_threshold = iou_thres
         self.max_obj = max_obj
-        self.plugin_version = '1'
+        self.plugin_version = plugin_version
         self.score_activation = 0
         self.score_threshold = score_thres
         self.n_classes=n_classes
@@ -208,24 +275,66 @@ class ONNX_TRT(nn.Module):
         bboxes_h = x[..., 3:4]
         bboxes = torch.cat([bboxes_x, bboxes_y, bboxes_w, bboxes_h], dim = -1)
         bboxes = bboxes.unsqueeze(2) # [n_batch, n_bboxes, 4] -> [n_batch, n_bboxes, 1, 4]
+
         obj_conf = x[..., 4:]
         scores = obj_conf
-        num_det, det_boxes, det_scores, det_classes = TRT_NMS.apply(bboxes, scores, self.background_class, self.box_coding,
-                                                                    self.iou_threshold, self.max_obj,
-                                                                    self.plugin_version, self.score_activation,
-                                                                    self.score_threshold)
-        return num_det, det_boxes, det_scores, det_classes
+
+        if self.plugin_version == 'kpt':
+            xy = x[..., 0:2]  # shape [n_batch, n_bboxes, 2] — x and y
+            visible_flags = torch.ones_like(xy[..., :1])  # [B, N, 1]
+            keypoints = torch.cat([xy, visible_flags], dim=-1)  # [B, N, 3]
+            keypoints = keypoints.unsqueeze(2)  # [B, N, 1, 3]
+
+            num_det, det_boxes, det_scores, det_classes, det_keypoints = TRT_NMS_KPT.apply(
+                bboxes,
+                scores,
+                keypoints,
+                self.background_class,
+                self.box_coding,
+                self.iou_threshold,
+                self.max_obj,
+                self.plugin_version,
+                self.score_activation,
+                self.score_threshold
+            )
+
+            return num_det, det_boxes, det_scores, det_classes, det_keypoints
+        else:
+            num_det, det_boxes, det_scores, det_classes = TRT_NMS.apply(
+                bboxes,
+                scores,
+                self.background_class,
+                self.box_coding,
+                self.iou_threshold,
+                self.max_obj,
+                self.plugin_version,
+                self.score_activation,
+                self.score_threshold
+            )
+
+            return num_det, det_boxes, det_scores, det_classes
+
 
 class End2End(nn.Module):
     '''export onnx or tensorrt model with NMS operation.'''
-    def __init__(self, model, max_obj=100, iou_thres=0.45, score_thres=0.25, max_wh=None, device=None, n_classes=80):
+    def __init__(
+            self,
+            model,
+            max_obj=100,
+            iou_thres=0.45,
+            score_thres=0.25,
+            max_wh=None,
+            device=None,
+            n_classes=80,
+            plugin_version: str='1'
+    ):
         super().__init__()
         device = device if device else torch.device('cpu')
         assert isinstance(max_wh,(int)) or max_wh is None
         self.model = model.to(device)
         self.model.model[-1].end2end = True
         self.patch_model = ONNX_TRT if max_wh is None else ONNX_ORT
-        self.end2end = self.patch_model(max_obj, iou_thres, score_thres, max_wh, device, n_classes)
+        self.end2end = self.patch_model(max_obj, iou_thres, score_thres, max_wh, device, n_classes, plugin_version)
         self.end2end.eval()
 
     def forward(self, x):
